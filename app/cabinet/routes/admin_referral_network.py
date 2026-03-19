@@ -32,9 +32,7 @@ router = APIRouter(prefix='/admin/referral-network', tags=['Cabinet Admin Referr
 
 # ============ Constants ============
 
-SPENT_TRANSACTION_TYPES: tuple[str, ...] = (
-    TransactionType.SUBSCRIPTION_PAYMENT.value,
-)
+SPENT_TRANSACTION_TYPES: tuple[str, ...] = (TransactionType.SUBSCRIPTION_PAYMENT.value,)
 
 EDGE_TYPE_REFERRAL = 'referral'
 EDGE_TYPE_CAMPAIGN = 'campaign'
@@ -254,10 +252,7 @@ async def _fetch_direct_referral_counts(db: AsyncSession, user_ids: set[int] | N
 
     When user_ids is provided, only counts referrals for those users.
     """
-    stmt = (
-        select(User.referred_by_id, func.count(User.id))
-        .where(User.referred_by_id.isnot(None))
-    )
+    stmt = select(User.referred_by_id, func.count(User.id)).where(User.referred_by_id.isnot(None))
     if user_ids is not None:
         stmt = stmt.where(User.referred_by_id.in_(user_ids))
     stmt = stmt.group_by(User.referred_by_id)
@@ -497,7 +492,11 @@ async def get_referral_network(
 ) -> NetworkGraphResponse:
     """Return full referral network graph data for visualization."""
     if await RateLimitCache.is_rate_limited(
-        admin.id, 'referral_graph', GRAPH_RATE_LIMIT, GRAPH_RATE_WINDOW, fail_closed=True,
+        admin.id,
+        'referral_graph',
+        GRAPH_RATE_LIMIT,
+        GRAPH_RATE_WINDOW,
+        fail_closed=True,
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -611,7 +610,11 @@ async def get_network_user_detail(
 ) -> NetworkUserDetail:
     """Return detailed info about a specific user in the referral network."""
     if await RateLimitCache.is_rate_limited(
-        admin.id, 'referral_user_detail', DETAIL_RATE_LIMIT, DETAIL_RATE_WINDOW, fail_closed=True,
+        admin.id,
+        'referral_user_detail',
+        DETAIL_RATE_LIMIT,
+        DETAIL_RATE_WINDOW,
+        fail_closed=True,
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -623,7 +626,7 @@ async def get_network_user_detail(
     # Fetch user with subscription eagerly loaded
     stmt = (
         select(User)
-        .options(selectinload(User.subscription).selectinload(Subscription.tariff))
+        .options(selectinload(User.subscriptions).selectinload(Subscription.tariff))
         .where(User.id == user_id)
     )
     result = await db.execute(stmt)
@@ -718,10 +721,12 @@ async def get_network_user_detail(
     # Subscription info
     subscription_name: str | None = None
     subscription_end: str | None = None
-    if user.subscription is not None:
-        if user.subscription.tariff is not None:
-            subscription_name = user.subscription.tariff.name
-        subscription_end = _format_datetime(user.subscription.end_date)
+    subs = getattr(user, 'subscriptions', None) or []
+    subscription = next((s for s in subs if s.is_active), subs[0] if subs else None)
+    if subscription is not None:
+        if subscription.tariff is not None:
+            subscription_name = subscription.tariff.name
+        subscription_end = _format_datetime(subscription.end_date)
 
     return NetworkUserDetail(
         id=user.id,
@@ -753,7 +758,11 @@ async def get_network_campaign_detail(
 ) -> NetworkCampaignDetail:
     """Return detailed info about a specific advertising campaign."""
     if await RateLimitCache.is_rate_limited(
-        admin.id, 'referral_campaign_detail', DETAIL_RATE_LIMIT, DETAIL_RATE_WINDOW, fail_closed=True,
+        admin.id,
+        'referral_campaign_detail',
+        DETAIL_RATE_LIMIT,
+        DETAIL_RATE_WINDOW,
+        fail_closed=True,
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -867,7 +876,11 @@ async def search_referral_network(
 ) -> NetworkSearchResult:
     """Search users and campaigns in the referral network by telegram_id, username, email, or campaign name."""
     if await RateLimitCache.is_rate_limited(
-        admin.id, 'referral_search', SEARCH_RATE_LIMIT, SEARCH_RATE_WINDOW, fail_closed=True,
+        admin.id,
+        'referral_search',
+        SEARCH_RATE_LIMIT,
+        SEARCH_RATE_WINDOW,
+        fail_closed=True,
     ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -999,9 +1012,7 @@ async def search_referral_network(
             spent_res = await db.execute(spent_stmt)
             campaign_user_spent = {row[0]: row[1] for row in spent_res}
         campaign_referral_counts = (
-            await _fetch_direct_referral_counts(db, all_campaign_user_ids)
-            if all_campaign_user_ids
-            else {}
+            await _fetch_direct_referral_counts(db, all_campaign_user_ids) if all_campaign_user_ids else {}
         )
 
         for campaign in matched_campaigns:
